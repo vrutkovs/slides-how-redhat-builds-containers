@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Building a not-so-bad container</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <style type="text/css">
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      body {
+        font-family: 'Droid Serif';
+      }
+      .remark-slide-content h1 {
+        font-size: 16pt !important;
+      }
+      .remark-code, .remark-inline-code {
+        font-family: 'Inconsolata';
+        font-size: 10pt !important;
+      }
+      .remark-slide-scaler {
+        overflow-y: auto;
+      }
+      p {
+        font-size: 12pt;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background: #272822 !important;
+        color: #ddd;
+      }
+      .inverse {
+        background: #272822;
+        color: #777872;
+        text-shadow: 0 0 20px #333;
+      }
+      .inverse h1, .inverse h2 {
+        color: #f3f3f3;
+        line-height: 0.8em;
+      }
+
+      .inverse .footnote {
+        bottom: 12px;
+        left: 20px;
+      }
+
+      .inverse a, .inverse a > code {
+        color: rgb(249, 38, 114);
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+<textarea id="source">
+class: center, middle, inverse
+
+## Building a not-so-bad container
+.footnote[Vadim Rutkovsky <vrutkovs@redhat.com>]
+
+.footnote[http://github.com/vrutkovs/slides-building-a-not-so-bad-container/]
+---
+layout: false
+# What is wrong with simple Dockerfiles
+
+```docker
+FROM centos:centos7
+MAINTAINER The CentOS Project <cloud-ops@centos.org>
+
+RUN yum -y update; yum clean all
+RUN yum -y install epel-release; yum clean all
+RUN yum -y install mongodb-server; yum clean all
+RUN mkdir -p /data/db
+
+EXPOSE 27017
+ENTRYPOINT ["/usr/bin/mongod"]
+```
+
+1. Which version of mongo is installed?
+1. Is it necessary to have a layer for each instruction?
+1. Where do I find info about this package - URL, help file?
+1. How do I start it with default config? with a custom config?
+
+Lets add the missing information
+---
+# Add descriptive labels
+
+```docker
+FROM centos:centos7
+MAINTAINER The CentOS Project <cloud-ops@centos.org>
+
+RUN yum -y update && \
+    yum -y install epel-release \
+                   mongodb-server && \
+    yum clean all && \
+    mkdir -p /data/db
+
+LABEL BZComponent="mongodb"
+LABEL Version="3.2.8"
+LABEL Release="1"
+LABEL HELP="Mongo (from 'humongous') is a high-performance, open source, schema-free document-oriented database. MongoDB is written in C++ and offers the following features: * Collection oriented storage: easy storage of object/JSON-style data * Dynamic queries * Full index support, including on inner objects and embedded arrays * Query profiling * Replication and fail-over support * Efficient storage of binary data including large objects (e.g. photos and videos) * Auto-sharding for cloud-level scalability (currently in early alpha) * Commercial Support Available A key goal of MongoDB is to bridge the gap between key/value stores (which are fast and highly scalable) and traditional RDBMS systems (which are deep in functionality)."
+LABEL RUN="docker run -ti -v /data:/data/db mongo-centos-7:latest"
+
+EXPOSE 27017
+ENTRYPOINT ["/usr/bin/mongod"]
+```
+
+Now I should also update "Version" label whenever the package is updated
+
+---
+# Building a decent image manually
+
+Build:
+```
+$ sudo docker build -t mongo-centos-7 .
+```
+
+Squash extra layers:
+```
+$ sudo docker history mongo-centos-7 .
+IMAGE               CREATED           CREATED BY                                      SIZE     
+25954e6d2300        3 weeks ago       /bin/sh -c #(nop) ENTRYPOINT ["/usr/bin/mongod  0 B
+5ae69cb454a5        3 weeks ago       /bin/sh -c #(nop) EXPOSE 27017                  0 B
+...
+b78336099045        3 weeks ago       /bin/sh -c #(nop) MAINTAINER The CentOS Proje   0 B
+4816a298548c        3 weeks ago       /bin/sh -c #(nop) CMD ["/bin/bash"]             0 B
+6ee235cf4473        3 weeks ago       /bin/sh -c #(nop) LABEL name=CentOS Base Imag   0 B
+474c2ee77fa3        3 weeks ago       /bin/sh -c #(nop) ADD file:72852fc7626d233343   196.6 MB
+1544084fad81        6 months ago      /bin/sh -c #(nop) MAINTAINER The CentOS Proje   0 B
+$ sudo docker-squash -f b78336099045 -t mongo-centos-7:squashed mongo-centos-7:latest
+$ sudo docker tag mongo-centos-7:squashed mongo-centos-7:latest
+```
+
+Tag with additional tags - for version, version-release and a random timestamp
+```no-highlight
+$ sudo docker tag mongo-centos-7:latest mongo-centos-7:3.2.8
+$ sudo docker tag mongo-centos-7:latest mongo-centos-7:3.2.8-1
+$ sudo docker tag mongo-centos-7:latest mongo-centos-7:20170422171656
+```
+
+Can this be automated somehow?
+
+---
+class: center, middle
+
+## Atomic Reactor
+.footnote[https://github.com/projectatomic/atomic-reactor]
+
+---
+# What is Atomic Reactor
+
+Atomic Reactor is a python cli app which helps with building Docker images
+
+Features:
+1. Builds images inside a container - the builds are separated between each other
+1. Plugins - allows customizing the build process
+
+Installation:
+```
+$ git clone https://github.com/projectatomic/atomic-reactor.git
+$ cd atomic-reactor
+$ sudo pip install .
+```
+Prepare a buildroot - a docker image with necessary tools installed from a Dockerfile in 'images/dockerhost-builder':
+```
+$ sudo atomic-reactor create-build-image \
+    --reactor-local-path . \
+    ./images/dockerhost-builder \
+    buildroot
+```
+
+Build a Mongodb image using this buildroot:
+```
+$ sudo atomic-reactor build git \
+  --method hostdocker \
+  --build-image buildroot \
+  --image mongo-centos-7 \
+  --target-registries 172.17.42.1:5000 \
+  --uri "https://github.com/vrutkovs/mongodb-centos-7-docker.git"
+```
+
+---
+# What's happening inside atomic-reactor
+
+1. Atomic reactor prepares a build json:
+```json
+{
+  "source": {
+    "provider": "git",
+    "provider_params": {"git_commit": "None"},
+    "uri": "https://github.com/vrutkovs/mongodb-centos-7-docker.git",
+    "dockerfile_path": "None"},
+"image": "mongo-centos-7",
+"prebuild_plugins":
+    [{"args":
+        {"parent_registry_insecure": "False",
+         "parent_registry": "None"},
+         "name": "pull_base_image"}],
+"postbuild_plugins":
+    [{"args":
+         {"registries": {"172.17.42.1:5000": {"insecure": "False"}}},
+         "name": "tag_and_push"}]
+}
+```
+1. Atomic reactor starts a new container from buildroot image and passes the build json
+1. Inside the container atomic reactor reads build json and prepares a chain of plugins to run along with parameters for them
+1. The plugins are executed and the image is built
+
+Atomic reactor is able to run a build out of a custom JSON file too:
+```
+$ sudo  sudo atomic-reactor --verbose build json <path to build json> --build-image buildroot --method hostdocker
+```
+
+---
+# Most notable Atomic reactor plugins
+
+1. Pre-build plugins:
+    1. **pull_base_image** - makes sure the base image is always fresh
+    1. **change_from_in_dockerfile** - update FROM line in dockerfile to container image ID
+    1. **add_labels_in_dockerfile** - add missing labels - build date, hostname, git reference, architecture
+    1. **add_dockerfile** - store the used dockerfile in the image
+    1. **add_help** - convert a specified markdown file in a man page (used in `atomic help` command)
+    1. **add_yum_repo_by_url** / **inject_yum_repo** - install additional repo file and remove it in the end of the build
+1. Post-build and pre-publish plugins
+    1. **squash** - layers created during the build are squashed into one
+    1. **tag_by_labels** - tag image based on Version and Release labels
+    1. **tag_from_config** - tag image with additional tags, read from `additional-tags` in the git Replication
+    1. **tag_and_push** - apply tags to the image and push it to the specified repository
+    1. **all_rpm_packages** - gather info about RPM packages
+1. Exit plugins
+    1. **koji_promote** - create a build in Koji buildsystem with a tarball of the image and required metadata
+    1. **sendmail** - send an email about the status of the build
+
+---
+class: center, middle
+
+## OSBS
+.footnote[OpenShift Build System]
+
+---
+
+# OSBS details
+
+#### Build environment
+   Openshift - can be easily extended, has monitoring and metrics. Openshift-specific objects like BuildConfig and ImageStream are used in OSBS
+
+#### A tool which would create build jsons from a template and start builds
+   [OSBS-client](https://github.com/projectatomic/osbs-client) creates a build json based on parameters, has API to be used in other projects
+
+#### Integration with existing build system
+   [Koji](https://fedoraproject.org/wiki/Koji) is used in Red Hat / Fedora / CentOS to build RPMs, ISOs, Maven projects and can be extended to build container images
+
+---
+# Developer workflow
+
+1. Developer commits a Dockerfile. pushes it and runs `fedpkg container-build`
+1. Local plugin is verifying that koji build target (based on the branch name) is valid and creates a `buildContainer` task on the koji
+1. [Koji-containerbuild plugin](https://github.com/release-engineering/koji-containerbuild) checks that the image has necessary labels and uses OSBS-client API to start a new build:
+    1. OSBS-Client generates a new build json based on the received parameters and internal configuration
+    1. OSBS-Client creates a BuildConfig on Openshift with necessary parameters
+    1. OSBS-client starts a new build on Openshift cluster and sends logs from the build to the build system
+1. Openshift picks the less busy node, starts a new container from the buildroot image
+1. The container starts Atomic Reactor, builds the image and runs specified plugins
+1. After the build is complete Koji task is finished, a new koji build is created
+
+---
+class: center, middle
+
+## Demo time!
+
+---
+
+# Future features
+
+#### Multiarch containers
+
+Atomic Reactor can connect to a remote docker instance - a dedicated secondary arch builders
+
+#### Chained rebuilds
+Openshift can trigger new builds automatically whenever base image of the container is updated in the repository - using ImageStream functionality
+
+#### Image signing and container scanning
+
+Build phase can be extended to include vulnerability scanning and image signing
+
+#### OCI images
+
+Docker build is implemented as a plugin in Atomic Reactor, so other types of buildstep plugins are possible - to build ansible-container or OCI images
+
+---
+class: center, middle
+## Questions?
+
+</textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js" type="text/javascript">
+    </script>
+    <!-- Uncomment this if there is no internet -->
+    <!-- <script src="remark-latest.min.js" type="text/javascript"/> -->
+
+    <script type="text/javascript">
+      var slideshow = remark.create(      {
+        // Navigation options
+        navigation: {
+          // Enable or disable navigating using scroll
+          // Default: true
+          // Alternatives: false
+          scroll: false,
+        },
+        highlightStyle: 'monokai',
+        highlightSpans: true
+      }
+      );
+    </script>
+  </body>
+</html>
