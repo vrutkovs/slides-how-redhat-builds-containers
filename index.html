@@ -1,61 +1,41 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html>
   <head>
     <title>Building a not-so-bad container</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-    <style type="text/css">
-      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
-      body {
-        font-family: 'Droid Serif';
-      }
-      .remark-slide-content h1 {
-        font-size: 16pt !important;
-      }
-      .remark-code, .remark-inline-code {
-        font-family: 'Inconsolata';
-        font-size: 10pt !important;
-      }
-      .remark-slide-scaler {
-        overflow-y: auto;
-      }
-      p {
-        font-size: 12pt;
-      }
-      pre {
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        background: #272822 !important;
-        color: #ddd;
-      }
-      .inverse {
-        background: #272822;
-        color: #777872;
-        text-shadow: 0 0 20px #333;
-      }
-      .inverse h1, .inverse h2 {
-        color: #f3f3f3;
-        line-height: 0.8em;
-      }
-
-      .inverse .footnote {
-        bottom: 12px;
-        left: 20px;
-      }
-
-      .inverse a, .inverse a > code {
-        color: rgb(249, 38, 114);
-        text-decoration: none;
-      }
-    </style>
+    <link rel="stylesheet" type="text/css" href="style.css"></link>
   </head>
   <body>
 <textarea id="source">
 class: center, middle, inverse
 
-## Building a not-so-bad container
+## How Red Hat builds containers
 .footnote[Vadim Rutkovsky <vrutkovs@redhat.com>]
 
-.footnote[http://github.com/vrutkovs/slides-building-a-not-so-bad-container/]
+.footnote[http://github.com/vrutkovs/slides-how-redhat-builds-containers/]
+---
+layout: false
+# Building an image is simple, right?
+
+* Take the dockerfile
+* And build it!:
+
+  `docker build -t .`
+
+* Done! Oh, right, the image should have tags:
+
+  `docker tag deadbeef myimage:latest`
+
+* Oops, the previous latest image was overwritten, I should add some more tags:
+
+  `docker tag myimage:latest myimage:1.0`
+
+* Done, push to production instance!
+
+* Oh, wait, how do I start it? What version is it running anyway?
+
+#### Arrght, its too complicated, lets start from scratch!
+
 ---
 layout: false
 # What is wrong with simple Dockerfiles
@@ -76,9 +56,11 @@ ENTRYPOINT ["/usr/bin/mongod"]
 1. Which version of mongo is installed?
 1. Is it necessary to have a layer for each instruction?
 1. Where do I find info about this package - URL, help file?
+1. Why is `/data/db` being created there? Is it a mount point?
 1. How do I start it with default config? with a custom config?
 
-Lets add the missing information
+####Lets add the missing information
+
 ---
 # Add descriptive labels
 
@@ -115,7 +97,7 @@ $ sudo docker build -t mongo-centos-7 .
 Squash extra layers:
 ```
 $ sudo docker history mongo-centos-7 .
-IMAGE               CREATED           CREATED BY                                      SIZE     
+IMAGE               CREATED           CREATED BY                                      SIZE
 25954e6d2300        3 weeks ago       /bin/sh -c #(nop) ENTRYPOINT ["/usr/bin/mongod  0 B
 5ae69cb454a5        3 weeks ago       /bin/sh -c #(nop) EXPOSE 27017                  0 B
 ...
@@ -261,6 +243,37 @@ class: center, middle
 1. After the build is complete Koji task is finished, a new koji build is created
 
 ---
+# Orchestration
+
+1. Orchestration workflow allows us to use other Openshift clusters as workers
+1. Enables splitting the load, firewalled instances for workers and post-build assembly operations on orchestrator cluster
+
+Example: Multi-arch image building:
+
+1. Orchestrator cluster receives a request for multi-arch build
+1. Verifies the source code, fetches packages
+1. Picks workers for required architecture - worker_x86_64 and worker_aarch64
+1. Workers build images in parallel, push arch-specific images to the registry
+1. Orchestrator waits until all workers are finished
+1. Orchestrator prepares the multi-arch manifest (manifest list) - a manifest which points to arch-specific image depending on which arch is used on the container engine requesting this image.
+1. Orchestrator tags the manifest list, creates Koji build etc.
+
+---
+# Chained rebuilds, isolated builds
+
+OSBS leverages Openshift ImageStreams to trigger builds whenever base image is updated:
+
+1. When a child image is built a new imagestream, pointing to a parent build is created
+1. Whenever a new parent image version is released, a new Openshift build can be triggered
+1. Atomic Reactor has a set of plugins to decide whether the child package should be rebuilt
+1. If it indeed should be, a new Koji build is created, as if it was manually triggered
+
+Some tasks, however, require a shortcut version of this workflow - for instance, for quick CVE build.
+A special - isolated - build can be created on request. This isolated build would rebuild the same image,
+but with different repo with updated packages.
+This allows us to release CVE fixes faster.
+
+---
 class: center, middle
 
 ## Demo time!
@@ -269,30 +282,23 @@ class: center, middle
 
 # Future features
 
-#### Multiarch containers
-
-Atomic Reactor can connect to a remote docker instance - a dedicated secondary arch builders
-
-#### Chained rebuilds
-Openshift can trigger new builds automatically whenever base image of the container is updated in the repository - using ImageStream functionality
-
 #### Image signing and container scanning
 
 Build phase can be extended to include vulnerability scanning and image signing
 
 #### OCI images
 
-Docker build is implemented as a plugin in Atomic Reactor, so other types of buildstep plugins are possible - to build ansible-container or OCI images
+Docker build is implemented as a plugin in Atomic Reactor, so other types of buildstep plugins are possible - to build ansible-container, OCI images (e.g. Flatpaks)
 
 ---
 class: center, middle
-## Questions?
+## That's all folks
 
 </textarea>
-    <script src="https://remarkjs.com/downloads/remark-latest.min.js" type="text/javascript">
-    </script>
+    <!-- <script src="https://remarkjs.com/downloads/remark-latest.min.js" type="text/javascript">
+    </script> -->
     <!-- Uncomment this if there is no internet -->
-    <!-- <script src="remark-latest.min.js" type="text/javascript"/> -->
+    <script src="remark-latest.min.js" type="text/javascript"></script>
 
     <script type="text/javascript">
       var slideshow = remark.create(      {

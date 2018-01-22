@@ -1,0 +1,42 @@
+@import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+body {
+  font-family: 'Droid Serif';
+}
+.remark-slide-content h1 {
+  font-size: 16pt !important;
+}
+.remark-code, .remark-inline-code {
+  font-family: 'Inconsolata';
+  font-size: 10pt !important;
+}
+.remark-slide-scaler {
+  overflow-y: auto;
+}
+p {
+  font-size: 12pt;
+}
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #272822 !important;
+  color: #ddd;
+}
+.inverse {
+  background: #272822;
+  color: #777872;
+  text-shadow: 0 0 20px #333;
+}
+.inverse h1, .inverse h2 {
+  color: #f3f3f3;
+  line-height: 0.8em;
+}
+
+.inverse .footnote {
+  bottom: 12px;
+  left: 20px;
+}
+
+.inverse a, .inverse a > code {
+  color: rgb(249, 38, 114);
+  text-decoration: none;
+}
