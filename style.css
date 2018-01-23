@@ -2,9 +2,29 @@
 body {
   font-family: 'Droid Serif';
 }
+
+.remark-slide-number {
+  bottom: 35px;
+  opacity: 0.25;
+  position: absolute;
+  right: unset;
+}
+
+.remark-slide-content {
+  background-color: #f1f1f1;
+}
+
 .remark-slide-content h1 {
   font-size: 16pt !important;
 }
+
+.remark-slide-content .footer {
+    position: absolute;
+    bottom: 1rem;
+    left: 2rem;
+    opacity: 0.5;
+}
+
 .remark-code, .remark-inline-code {
   font-family: 'Inconsolata';
   font-size: 10pt !important;

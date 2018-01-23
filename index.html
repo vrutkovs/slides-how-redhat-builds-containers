@@ -15,6 +15,8 @@ class: center, middle, inverse
 .footnote[http://github.com/vrutkovs/slides-how-redhat-builds-containers/]
 ---
 layout: false
+background-image: url(back.png)
+
 # Building an image is simple, right?
 
 * Take the dockerfile
@@ -38,6 +40,7 @@ layout: false
 
 ---
 layout: false
+background-image: url(back.png)
 # What is wrong with simple Dockerfiles
 
 ```docker
@@ -62,6 +65,7 @@ ENTRYPOINT ["/usr/bin/mongod"]
 ####Lets add the missing information
 
 ---
+background-image: url(back.png)
 # Add descriptive labels
 
 ```docker
@@ -87,6 +91,7 @@ ENTRYPOINT ["/usr/bin/mongod"]
 Now I should also update "Version" label whenever the package is updated
 
 ---
+background-image: url(back.png)
 # Building a decent image manually
 
 Build:
@@ -121,11 +126,13 @@ Can this be automated somehow?
 
 ---
 class: center, middle
+background-image: url(back.png)
 
 ## Atomic Reactor
 .footnote[https://github.com/projectatomic/atomic-reactor]
 
 ---
+background-image: url(back.png)
 # What is Atomic Reactor
 
 Atomic Reactor is a python cli app which helps with building Docker images
@@ -159,6 +166,7 @@ $ sudo atomic-reactor build git \
 ```
 
 ---
+background-image: url(back.png)
 # What's happening inside atomic-reactor
 
 1. Atomic reactor prepares a build json:
@@ -191,6 +199,7 @@ $ sudo  sudo atomic-reactor --verbose build json <path to build json> --build-im
 ```
 
 ---
+background-image: url(back.png)
 # Most notable Atomic reactor plugins
 
 1. Pre-build plugins:
@@ -211,13 +220,14 @@ $ sudo  sudo atomic-reactor --verbose build json <path to build json> --build-im
     1. **sendmail** - send an email about the status of the build
 
 ---
+background-image: url(back.png)
 class: center, middle
 
 ## OSBS
 .footnote[OpenShift Build System]
 
 ---
-
+background-image: url(back.png)
 # OSBS details
 
 #### Build environment
@@ -230,6 +240,7 @@ class: center, middle
    [Koji](https://fedoraproject.org/wiki/Koji) is used in Red Hat / Fedora / CentOS to build RPMs, ISOs, Maven projects and can be extended to build container images
 
 ---
+background-image: url(back.png)
 # Developer workflow
 
 1. Developer commits a Dockerfile. pushes it and runs `fedpkg container-build`
@@ -243,6 +254,7 @@ class: center, middle
 1. After the build is complete Koji task is finished, a new koji build is created
 
 ---
+background-image: url(back.png)
 # Orchestration
 
 1. Orchestration workflow allows us to use other Openshift clusters as workers
@@ -259,6 +271,7 @@ Example: Multi-arch image building:
 1. Orchestrator tags the manifest list, creates Koji build etc.
 
 ---
+background-image: url(back.png)
 # Chained rebuilds, isolated builds
 
 OSBS leverages Openshift ImageStreams to trigger builds whenever base image is updated:
@@ -274,11 +287,13 @@ but with different repo with updated packages.
 This allows us to release CVE fixes faster.
 
 ---
+background-image: url(back.png)
 class: center, middle
 
 ## Demo time!
 
 ---
+background-image: url(back.png)
 
 # Future features
 
@@ -291,6 +306,7 @@ Build phase can be extended to include vulnerability scanning and image signing
 Docker build is implemented as a plugin in Atomic Reactor, so other types of buildstep plugins are possible - to build ansible-container, OCI images (e.g. Flatpaks)
 
 ---
+background-image: url(back.png)
 class: center, middle
 ## That's all folks
 
