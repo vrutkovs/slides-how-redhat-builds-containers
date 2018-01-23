@@ -143,9 +143,7 @@ Features:
 
 Installation:
 ```
-$ git clone https://github.com/projectatomic/atomic-reactor.git
-$ cd atomic-reactor
-$ sudo pip install .
+$ pip install git+https://github.com/projectatomic/atomic-reactor.git@master
 ```
 Prepare a buildroot - a docker image with necessary tools installed from a Dockerfile in 'images/dockerhost-builder':
 ```
@@ -167,35 +165,50 @@ $ sudo atomic-reactor build git \
 
 ---
 background-image: url(back.png)
-# What's happening inside atomic-reactor
+# Build JSON
 
-1. Atomic reactor prepares a build json:
-```json
+Atomic reactor prepares a build json:
+```
 {
-  "source": {
-    "provider": "git",
-    "provider_params": {"git_commit": "None"},
-    "uri": "https://github.com/vrutkovs/mongodb-centos-7-docker.git",
-    "dockerfile_path": "None"},
-"image": "mongo-centos-7",
-"prebuild_plugins":
-    [{"args":
-        {"parent_registry_insecure": "False",
-         "parent_registry": "None"},
-         "name": "pull_base_image"}],
-"postbuild_plugins":
-    [{"args":
-         {"registries": {"172.17.42.1:5000": {"insecure": "False"}}},
-         "name": "tag_and_push"}]
+    "source": {
+        "provider": "git",
+        "provider_params": {"git_commit": "None" },
+        "uri": "https://github.com/vrutkovs/mongodb-centos-7-docker.git",
+        "dockerfile_path": "None"
+    },
+    "image": "mongo-centos-7",
+    "prebuild_plugins": [
+        {
+            "name": "pull_base_image",
+            "args": {
+                "parent_registry_insecure": "False",
+                "parent_registry": "None"
+            }
+        }
+    ],
+    "postbuild_plugins": [
+        {
+            "name": "tag_and_push",
+            "args": {
+                "registries": {
+                    "172.17.42.1:5000": { "insecure": "False" }
+                }
+            }
+        }
+    ]
 }
 ```
-1. Atomic reactor starts a new container from buildroot image and passes the build json
-1. Inside the container atomic reactor reads build json and prepares a chain of plugins to run along with parameters for them
+---
+background-image: url(back.png)
+# What's happening inside atomic-reactor
+
+1. Atomic reactor on the host starts a new container from buildroot image and passes the build json
+1. Inside the container atomic reactor prepares a list of plugins to run from build json
 1. The plugins are executed and the image is built
 
 Atomic reactor is able to run a build out of a custom JSON file too:
 ```
-$ sudo  sudo atomic-reactor --verbose build json <path to build json> --build-image buildroot --method hostdocker
+$ sudo atomic-reactor --verbose build json <path to build json> --build-image buildroot --method hostdocker
 ```
 
 ---
@@ -208,12 +221,11 @@ background-image: url(back.png)
     1. **add_labels_in_dockerfile** - add missing labels - build date, hostname, git reference, architecture
     1. **add_dockerfile** - store the used dockerfile in the image
     1. **add_help** - convert a specified markdown file in a man page (used in `atomic help` command)
-    1. **add_yum_repo_by_url** / **inject_yum_repo** - install additional repo file and remove it in the end of the build
+    1. **add_yum_repo_by_url** - install additional repo file and remove it in the end of the build
 1. Post-build and pre-publish plugins
     1. **squash** - layers created during the build are squashed into one
     1. **tag_by_labels** - tag image based on Version and Release labels
-    1. **tag_from_config** - tag image with additional tags, read from `additional-tags` in the git Replication
-    1. **tag_and_push** - apply tags to the image and push it to the specified repository
+    1. **tag_and_push** - push the image it to the specified repository or repositories
     1. **all_rpm_packages** - gather info about RPM packages
 1. Exit plugins
     1. **koji_promote** - create a build in Koji buildsystem with a tarball of the image and required metadata
@@ -243,7 +255,10 @@ background-image: url(back.png)
 background-image: url(back.png)
 # Developer workflow
 
-1. Developer commits a Dockerfile. pushes it and runs `fedpkg container-build`
+1. Developer commits a Dockerfile, pushes it and runs
+
+``` $ fedpkg container-build ```
+
 1. Local plugin is verifying that koji build target (based on the branch name) is valid and creates a `buildContainer` task on the koji
 1. [Koji-containerbuild plugin](https://github.com/release-engineering/koji-containerbuild) checks that the image has necessary labels and uses OSBS-client API to start a new build:
     1. OSBS-Client generates a new build json based on the received parameters and internal configuration
@@ -252,15 +267,19 @@ background-image: url(back.png)
 1. Openshift picks the less busy node, starts a new container from the buildroot image
 1. The container starts Atomic Reactor, builds the image and runs specified plugins
 1. After the build is complete Koji task is finished, a new koji build is created
+1. Koji build URL and pullspecs are shown in the CLI
 
 ---
 background-image: url(back.png)
 # Orchestration
 
-1. Orchestration workflow allows us to use other Openshift clusters as workers
-1. Enables splitting the load, firewalled instances for workers and post-build assembly operations on orchestrator cluster
+Orchestration workflow allows us to use other Openshift clusters as workers
 
-Example: Multi-arch image building:
+Enables load balancing, post-build assembly operations on orchestrator cluster and multiple
+availability zones for workers.
+
+
+#### Example: Multi-arch image building:
 
 1. Orchestrator cluster receives a request for multi-arch build
 1. Verifies the source code, fetches packages
@@ -276,14 +295,16 @@ background-image: url(back.png)
 
 OSBS leverages Openshift ImageStreams to trigger builds whenever base image is updated:
 
-1. When a child image is built a new imagestream, pointing to a parent build is created
+1. When a child image is built a new imagestream pointing to a parent build is created
 1. Whenever a new parent image version is released, a new Openshift build can be triggered
-1. Atomic Reactor has a set of plugins to decide whether the child package should be rebuilt
-1. If it indeed should be, a new Koji build is created, as if it was manually triggered
+1. Atomic Reactor verifies that this package has autorebuild enabled - the build goes on if it is
+1. After a successful build a new build in Koji is created, as if it was manually triggered
 
+##### Isolated builds
 Some tasks, however, require a shortcut version of this workflow - for instance, for quick CVE build.
-A special - isolated - build can be created on request. This isolated build would rebuild the same image,
-but with different repo with updated packages.
+A special - isolated - build can be created on request.
+
+This isolated build would repeat the build for given image or koji buikd, but with different repo, pointing to updated packages.
 This allows us to release CVE fixes faster.
 
 ---
